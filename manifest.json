@@ -1,0 +1,45 @@
+{
+	"manifest_version": 3,
+	"name": "Laburnum",
+	"version": "0.0.1",
+	"description": "Group tabs",
+	"icons": {
+		"48": "icons/icon_gray.png",
+		"96": "icons/icon_gray.png"
+	},
+	"background": {
+		"scripts": ["laburnum_background.js"],
+		"service_worker": "laburnum_background.js"
+	},
+	"action": {
+		"default_icon": "icons/icon_lightgray.png",
+		"default_title": "Group tabs"
+	},
+	"commands": {
+		"group-tabs": {
+			"suggested_key": {
+				"default": "Alt+Shift+G"
+			},
+			"description": "Group tabs"
+		},
+		"group-tabs-by-date": {
+			"suggested_key": {
+				"default": "Alt+Shift+H"
+			},
+			"description": "Group tabs by date"
+		}
+	},
+	"permissions": ["tabs"],
+	"browser_specific_settings": {
+		"gecko": {
+			"id": "{c65cc98b-12c6-4bda-b7b6-592b61416849}",
+			"strict_min_version": "138.0"
+		}
+	},
+	"externals": {
+		"heliotropium": {
+			"CHROME_EXTENSION_ID": "mljeinehnapbddnpfpjiipnpdaeeemdi",
+			"FIREFOX_EXTENSION_ID": "{a3d35f84-d68a-456c-8e85-55a25306f580}"
+		}
+	}
+}
