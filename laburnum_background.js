@@ -35,40 +35,8 @@ async function getSelectedTabs() {
 	}
 }
 
-async function sortSelectedTabsByUrl() {
-	try {
-		const tabs = await getSelectedTabs();
-		if (!tabs || tabs.length === 0) {
-			console.log('No tabs found.');
-			await flashBadge({ success: false });
-			return;
-		}
-
-		console.group('Sorting tabs...');
-		tabs.forEach((tab) => console.log(tab.url));
-		console.groupEnd();
-
-		const leftmostIndex = Math.min(...tabs.map(tab => tab.index));
-		const sortedTabs = tabs.sort((a, b) => {
-			const urlA = a.url || '';
-			const urlB = b.url || '';
-			return urlA.localeCompare(urlB);
-		});
-
-		await Promise.all(sortedTabs.map((tab, i) =>
-			chrome.tabs.move(tab.id, { index: leftmostIndex + i }).catch(err => console.log(`Failed to move tab ${tab.id}:`, err))
-		));
-
-		console.group('Sorted!');
-		sortedTabs.forEach((tab) => console.log(tab.url));
-		console.groupEnd();
-
-		await flashBadge({ success: true });
-	}
-	catch (error) {
-		console.log(error);
-		await flashBadge({ success: false });
-	}
+async function groupSelectedTabs() {
+	// todo: implement grouping logic
 }
 
 async function fetchTabDates(tabs) {
@@ -210,7 +178,7 @@ chrome.action.onClicked.addListener(async () => {
 
 chrome.commands.onCommand.addListener(async (command) => {
 	if (command === 'group-tabs') {
-		await sortSelectedTabsByUrl();
+		await groupSelectedTabs();
 	}
 	if (command === 'group-tabs-by-date') {
 		await sortSelectedTabsByDate();
