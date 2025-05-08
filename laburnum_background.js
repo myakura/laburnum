@@ -160,20 +160,12 @@ async function sortTabsByDate(tabs, tabDataArray) {
 	await flashBadge({ success: true });
 }
 
-async function sortSelectedTabsByDate() {
-	try {
-		const tabs = await getSelectedTabs();
-		const tabDataArray = await fetchTabDates(tabs);
-		await sortTabsByDate(tabs, tabDataArray);
-	}
-	catch (error) {
-		console.log(error);
-		await flashBadge({ success: false });
-	}
+async function groupSelectedTabsByDate() {
+	// todo: implement grouping logic
 }
 
 chrome.action.onClicked.addListener(async () => {
-	await sortSelectedTabsByDate();
+	await groupSelectedTabsByDate();
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
@@ -181,7 +173,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 		await groupSelectedTabs();
 	}
 	if (command === 'group-tabs-by-date') {
-		await sortSelectedTabsByDate();
+		await groupSelectedTabsByDate();
 	}
 });
 
