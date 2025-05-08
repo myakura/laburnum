@@ -209,10 +209,10 @@ chrome.action.onClicked.addListener(async () => {
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
-	if (command === 'sort-tabs-by-url') {
+	if (command === 'group-tabs') {
 		await sortSelectedTabsByUrl();
 	}
-	if (command === 'sort-tabs-by-date') {
+	if (command === 'group-tabs-by-date') {
 		await sortSelectedTabsByDate();
 	}
 });
