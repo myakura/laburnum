@@ -183,7 +183,13 @@ async function sortTabsByDate(tabs, tabDataArray) {
 }
 
 async function groupSelectedTabsByDate() {
-	// todo: implement grouping logic
+	// 1. fetch dates for selected tabs, gets an array of objects with tabId and date
+
+	// 2. sort the array of tabs by date. move tabs with undated dates to the start of the array
+
+	// 3. make a new array from step 2, with each item being an object whose key is the date and the value is an array of tab ids. undated tabs should be grouped together, perhaps with a key of 'undated'
+
+	// 4. group the tabs by date, using the array from step 3. if tabGroups.update() is supported, use the date (or 'undated') as the name of the group
 }
 
 chrome.action.onClicked.addListener(async () => {
