@@ -36,7 +36,29 @@ async function getSelectedTabs() {
 }
 
 async function groupSelectedTabs() {
-	// todo: implement grouping logic
+	try {
+		const tabs = await getSelectedTabs();
+		if (!tabs || tabs.length === 0) {
+			console.log('No tabs found.');
+			await flashBadge({ success: false });
+			return;
+		}
+
+		console.group('Grouping tabs...');
+		tabs.forEach((tab) => console.log(tab.url));
+		console.groupEnd();
+
+		const groupId = await chrome.tabs.group({
+			tabIds: tabs.map((tab) => tab.id),
+		});
+
+		console.log('Grouped!');
+		await flashBadge({ success: true });
+	}
+	catch (error) {
+		console.log(error);
+		await flashBadge({ success: false });
+	}
 }
 
 async function fetchTabDates(tabs) {
