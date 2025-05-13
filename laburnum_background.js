@@ -193,6 +193,7 @@ async function groupSelectedTabsByDate() {
 }
 
 chrome.action.onClicked.addListener(async () => {
+	// fixme: use `groupSelectedTabsByUrl()` by default. change to `groupSelectedTabsByDate()` if heliotropium is installed
 	await groupSelectedTabsByDate();
 });
 
