@@ -171,6 +171,13 @@ function sortTabsByDate(tabs, tabDataArray) {
 		const dateB = dateMap[b.id] || '';
 		return dateA.localeCompare(dateB);
 	});
+
+	// move tabs without dates to the start of the array
+	const undatedTabs = sortedTabs.filter(tab => !dateMap[tab.id]);
+	const datedTabs = sortedTabs.filter(tab => dateMap[tab.id]);
+	sortedTabs.length = 0;
+	sortedTabs.push(...undatedTabs, ...datedTabs);
+
 	console.log('Sorted tab ids:', sortedTabs.map(tab => tab.id));
 
 	return sortedTabs;
