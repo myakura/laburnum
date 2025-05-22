@@ -183,18 +183,80 @@ function sortTabsByDate(tabs, tabDataArray) {
 	return sortedTabs;
 }
 
-	console.log('Tabs sorted by date.');
-	await flashBadge({ success: true });
-}
-
 async function groupSelectedTabsByDate() {
-	// 1. fetch dates for selected tabs, gets an array of objects with tabId and date
+	try {
+		const tabs = await getSelectedTabs();
+		if (!tabs || tabs.length === 0) {
+			console.log('No tabs found.');
+			await flashBadge({ success: false });
+			return;
+		}
+		console.group('Grouping tabs by date...');
+		tabs.forEach((tab) => console.log(tab.id, tab.url));
+		console.groupEnd();
 
-	// 2. sort the array of tabs by date. move tabs with undated dates to the start of the array
+		// 1. fetch dates for selected tabs, gets an array of objects with tabId and date
+		const tabDataArray = await fetchTabDates(tabs);
+		if (!tabDataArray || tabDataArray.length === 0) {
+			console.log('No tab data found.');
+			await flashBadge({ success: false });
+			return;
+		}
+		console.group('Tab data:');
+		tabDataArray.forEach((tabData) => console.log(tabData.tabId, tabData.date));
+		console.groupEnd();
 
-	// 3. make a new array from step 2, with each item being an object whose key is the date and the value is an array of tab ids. undated tabs should be grouped together, perhaps with a key of 'undated'
+		// 2. sort the array of tabs by date. move tabs with undated dates to the start of the array
+		const sortedTabs = sortTabsByDate(tabs, tabDataArray);
+		if (!sortedTabs || sortedTabs.length === 0) {
+			console.log('No sorted tabs found.');
+			await flashBadge({ success: false });
+			return;
+		}
+		console.group('Sorted tabs:');
+		sortedTabs.forEach((tab) => console.log(tab.id, tab.url));
+		console.groupEnd();
 
-	// 4. group the tabs by date, using the array from step 3. if tabGroups.update() is supported, use the date (or 'undated') as the name of the group
+		// 3. make a new array from step 2, with each item being an object whose key is the date and the value is an array of tab ids. undated tabs should be grouped together, perhaps with a key of 'undated'
+		const tabGroups = {};
+		sortedTabs.forEach((tab) => {
+			const tabData = tabDataArray.find((data) => data.tabId === tab.id);
+			const { date } = tabData || {};
+			const dateKey = date ? `${date.year}-${date.month}-${date.day}` : 'undated';
+			if (!tabGroups[dateKey]) {
+				tabGroups[dateKey] = [];
+			}
+			tabGroups[dateKey].push(tab.id);
+		});
+		console.group('Tab groups:');
+		console.log(tabGroups);
+		Object.entries(tabGroups).forEach(([date, tabIds]) => {
+			console.log(date, tabIds);
+		});
+		console.groupEnd();
+
+		// 4. group the tabs by date, using the array from step 3. if tabGroups.update() is supported, use the date (or 'undated') as the name of the group
+		const groupPromises = Object.entries(tabGroups).map(async ([date, tabIds]) => {
+			try {
+				const groupId = await chrome.tabs.group({ tabIds });
+				if (date !== 'undated') {
+					await chrome.tabGroups.update(groupId, { title: date });
+				}
+				console.log('Grouped tabs by date:', date, tabIds);
+			}
+			catch (error) {
+				console.log('Error grouping tabs:', error);
+			}
+		});
+		await Promise.all(groupPromises);
+
+		console.log('Grouped all tabs by date!');
+		await flashBadge({ success: true });
+	}
+	catch (error) {
+		console.log('Error grouping tabs by date:', error);
+		await flashBadge({ success: false });
+	}
 }
 
 chrome.action.onClicked.addListener(async () => {
