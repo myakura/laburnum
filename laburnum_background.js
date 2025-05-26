@@ -244,7 +244,11 @@ async function groupSelectedTabsByDate() {
 		// 4. group the tabs by date, using the array from step 3. if tabGroups.update() is supported, use the date (or 'undated') as the name of the group
 		const groupPromises = Object.entries(tabGroups).map(async ([date, tabIds]) => {
 			try {
+				console.log('Grouping tabs on date:', date);
 				const groupId = await chrome.tabs.group({ tabIds });
+				const tabGroup = await chrome.tabGroups.get(groupId);
+				console.log('Created group:', tabGroup);
+
 				if (date !== 'undated') {
 					await chrome.tabGroups.update(groupId, { title: date });
 				}
