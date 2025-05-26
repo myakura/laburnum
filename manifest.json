@@ -29,7 +29,7 @@
 			"description": "Group tabs by date"
 		}
 	},
-	"permissions": ["tabs"],
+	"permissions": ["tabs", "tabGroups"],
 	"browser_specific_settings": {
 		"gecko": {
 			"id": "{c65cc98b-12c6-4bda-b7b6-592b61416849}",
