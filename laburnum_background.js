@@ -183,6 +183,21 @@ function sortTabsByDate(tabs, tabDataArray) {
 	return sortedTabs;
 }
 
+// make a new array from tabs and the result from fetchTabdates, with each item being an object whose key is the date and the value is an array of tab ids. undated tabs should be grouped together, perhaps with a key of 'undated'
+function makeDateTabGroups(tabs, tabDataArray) {
+	const tabGroups = {};
+	tabs.forEach((tab) => {
+		const tabData = tabDataArray.find((data) => data.tabId === tab.id);
+		const { date } = tabData || {};
+		const dateKey = date ? `${date.year}-${date.month}-${date.day}` : 'undated';
+		if (!tabGroups[dateKey]) {
+			tabGroups[dateKey] = [];
+		}
+		tabGroups[dateKey].push(tab.id);
+	});
+	return tabGroups;
+}
+
 async function groupSelectedTabsByDate() {
 	try {
 		const tabs = await getSelectedTabs();
@@ -217,17 +232,8 @@ async function groupSelectedTabsByDate() {
 		sortedTabs.forEach((tab) => console.log(tab.id, tab.url));
 		console.groupEnd();
 
-		// 3. make a new array from step 2, with each item being an object whose key is the date and the value is an array of tab ids. undated tabs should be grouped together, perhaps with a key of 'undated'
-		const tabGroups = {};
-		sortedTabs.forEach((tab) => {
-			const tabData = tabDataArray.find((data) => data.tabId === tab.id);
-			const { date } = tabData || {};
-			const dateKey = date ? `${date.year}-${date.month}-${date.day}` : 'undated';
-			if (!tabGroups[dateKey]) {
-				tabGroups[dateKey] = [];
-			}
-			tabGroups[dateKey].push(tab.id);
-		});
+		// 3. make tabGroups object
+		const tabGroups = makeDateTabGroups(sortedTabs, tabDataArray);
 		console.group('Tab groups:');
 		console.log(tabGroups);
 		Object.entries(tabGroups).forEach(([date, tabIds]) => {
