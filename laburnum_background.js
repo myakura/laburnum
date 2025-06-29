@@ -19,6 +19,16 @@ async function flashBadge({ success = true }) {
 	}
 }
 
+async function setWorkingBadge() {
+	try {
+		await chrome.action.setBadgeText({ text: '...' });
+		await chrome.action.setBadgeBackgroundColor({ color: 'hsl(225, 100%, 60%)' });
+	}
+	catch (error) {
+		console.error('Failed to set working badge:', error);
+	}
+}
+
 async function getSelectedTabs() {
 	try {
 		const tabs = await chrome.tabs.query({ currentWindow: true, highlighted: true });
