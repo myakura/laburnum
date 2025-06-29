@@ -62,6 +62,24 @@ async function groupSelectedTabs() {
 }
 
 async function fetchTabDates(tabs) {
+	const unloadedTabs = tabs.filter(tab => tab.discarded || tab.status !== 'complete');
+
+	if (unloadedTabs.length > 0) {
+		const reloadPromises = unloadedTabs.map(tab => {
+			return new Promise(resolve => {
+				const listener = (tabId, changeInfo) => {
+					if (tabId === tab.id && changeInfo.status === 'complete') {
+						chrome.tabs.onUpdated.removeListener(listener);
+						resolve();
+					}
+				};
+				chrome.tabs.onUpdated.addListener(listener);
+				chrome.tabs.reload(tab.id);
+			});
+		});
+		await Promise.all(reloadPromises);
+	}
+
 	const tabIds = tabs.map((tab) => tab.id);
 
 	const manifest = chrome.runtime.getManifest();
@@ -92,11 +110,7 @@ async function fetchTabDates(tabs) {
 		// Handle different response formats
 		let processedData;
 
-		if (response === true) {
-			console.warn('Extension returned boolean true instead of data');
-			return fallbackData;
-		}
-		else if (!response) {
+		if (!response) {
 			console.log('No response from extension');
 			await flashBadge({ success: false });
 			return fallbackData;
@@ -105,11 +119,6 @@ async function fetchTabDates(tabs) {
 			console.log('Extension returned error:', response.error);
 			await flashBadge({ success: false });
 			return fallbackData;
-		}
-		else if (Array.isArray(response)) {
-			// Some extensions might return the data directly as an array
-			console.log('Response is an array, using directly');
-			processedData = response;
 		}
 		else if (response.data && Array.isArray(response.data)) {
 			// Expected format: { data: [...] }
