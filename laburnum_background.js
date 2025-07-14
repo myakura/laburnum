@@ -219,6 +219,8 @@ function makeDateTabGroups(tabs, tabDataArray) {
 
 async function groupSelectedTabsByDate() {
 	try {
+		await setWorkingBadge();
+
 		const tabs = await getSelectedTabs();
 		if (!tabs || tabs.length === 0) {
 			console.log('No tabs found.');
