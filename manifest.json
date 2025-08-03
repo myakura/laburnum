@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "Laburnum",
-	"version": "0.0.2",
+	"version": "0.0.3",
 	"description": "Group tabs",
 	"icons": {
 		"48": "icons/icon_gray.png",
@@ -17,15 +17,9 @@
 	},
 	"commands": {
 		"group-tabs": {
-			"suggested_key": {
-				"default": "Alt+Shift+G"
-			},
 			"description": "Group tabs"
 		},
 		"group-tabs-by-date": {
-			"suggested_key": {
-				"default": "Alt+Shift+H"
-			},
 			"description": "Group tabs by date"
 		}
 	},
