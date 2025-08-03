@@ -95,21 +95,23 @@ async function groupSelectedTabs() {
 }
 
 /**
- * Fetches date information for tabs via the Heliotropium extension.
- * It reloads unread/unfinished tabs with a timeout, then sends a message to the extension to get parsed dates.
+ * Fetches date information for tabs using Heliotropium extension
  * @param {ChromeTab[]} tabs
- * @returns {Promise<Array>} Array of objects containing tabId and date info (fallbacks provided on failure)
+ * @returns {Promise<Map<number, TabDateInfo>>} A map where keys are tab IDs and values are date info objects
+ * @see for Heliotropium see: {@link https://github.com/myakura/heliotropium}
  */
 async function fetchTabDates(tabs) {
-	const unloadedTabs = tabs.filter(tab => tab.discarded || tab.status !== 'complete');
+	const unloadedTabs = tabs.filter((tab) => tab.discarded || tab.status !== 'complete');
 
 	if (unloadedTabs.length > 0) {
-		const RELOAD_TIMEOUT = 15000; // 15 seconds
+		const RELOAD_TIMEOUT = 15000;
 
-		const reloadPromises = unloadedTabs.map(tab => {
+		const reloadPromises = unloadedTabs.map((tab) => {
+			let listener; // Store listener reference outside Promise
+
 			return Promise.race([
-				new Promise(resolve => {
-					const listener = (tabId, changeInfo) => {
+				new Promise((resolve) => {
+					listener = (tabId, changeInfo) => {
 						if (tabId === tab.id && changeInfo.status === 'complete') {
 							chrome.tabs.onUpdated.removeListener(listener);
 							resolve({ status: 'reloaded', tabId: tab.id });
@@ -123,7 +125,12 @@ async function fetchTabDates(tabs) {
 						resolve({ status: 'timeout', tabId: tab.id });
 					}, RELOAD_TIMEOUT);
 				})
-			]);
+			]).finally(() => {
+				// Clean up listener regardless of how Promise resolved
+				if (listener) {
+					chrome.tabs.onUpdated.removeListener(listener);
+				}
+			});
 		});
 
 		const results = await Promise.all(reloadPromises);
@@ -131,134 +138,109 @@ async function fetchTabDates(tabs) {
 	}
 
 	const tabIds = tabs.map((tab) => tab.id);
-
 	const manifest = chrome.runtime.getManifest();
-	const { FIREFOX_EXTENSION_ID, CHROME_EXTENSION_ID } = manifest.externals.heliotropium;
+	const heliotropiumConfig = manifest.externals?.heliotropium;
+
+	// Set a default map value as a fallback
+	const tabInfoMap = new Map(tabs.map((tab) => [tab.id, {
+		tabId: tab.id,
+		url: tab.url,
+		title: tab.title,
+		dateString: null,
+		date: null
+	}]));
+
+	if (!heliotropiumConfig) {
+		console.error("Heliotropium configuration is missing in manifest.json");
+		return tabInfoMap;
+	}
+
+	const { FIREFOX_EXTENSION_ID, CHROME_EXTENSION_ID } = heliotropiumConfig;
 	const extensionId = navigator.userAgent.includes('Firefox')
 		? FIREFOX_EXTENSION_ID
 		: CHROME_EXTENSION_ID;
 
-	const fallbackData = tabIds.map(tabId => {
-		const tab = tabs.find(t => t.id === tabId);
-		return {
-			tabId,
-			url: tab.url,
-			title: null,
-			dateString: null,
-			date: { year: null, month: null, day: null },
-		};
-	});
-
 	try {
-		console.log('Sending message to extension:', { action: 'get-dates', tabIds });
-
 		const response = await chrome.runtime.sendMessage(extensionId, { action: 'get-dates', tabIds });
 
-		console.log('Raw response from extension:', response);
-		console.log('Response type:', typeof response);
-
-		// Handle different response formats
-		let processedData;
-
-		if (!response) {
-			console.log('No response from extension');
-			await flashBadge({ success: false });
-			return fallbackData;
-		}
-		else if (response.error) {
-			console.log('Extension returned error:', response.error);
-			await flashBadge({ success: false });
-			return fallbackData;
-		}
-		else if (response.data && Array.isArray(response.data)) {
-			// Expected format: { data: [...] }
-			console.log('Using response.data array');
-			processedData = response.data;
-		}
-		else {
-			console.log('Unexpected response format:', response);
-			await flashBadge({ success: false });
-			return fallbackData;
+		if (!response || response.error || !Array.isArray(response.data)) {
+			console.log('No response, error, or invalid data from Heliotropium:', response?.error || response);
+			return tabInfoMap;
 		}
 
-		console.log('Processed data:', processedData);
-
-		const dataByTabId = {};
-		processedData.forEach(item => {
-			dataByTabId[item.tabId] = item;
-		});
-
-		const completeData = tabIds.map(tabId => {
-			if (dataByTabId[tabId]) {
-				return dataByTabId[tabId];
+		const dateMap = new Map(response.data.map((item) => [item.tabId, item]));
+		// Merge fetched data with fallback data to ensure all tabs are included.
+		for (const tab of tabs) {
+			if (dateMap.has(tab.id)) {
+				tabInfoMap.set(tab.id, dateMap.get(tab.id));
 			}
-			else {
-				const tab = tabs.find(t => t.id === tabId);
-				return {
-					tabId,
-					url: tab.url,
-					title: null,
-					dateString: null,
-					date: { year: null, month: null, day: null },
-				};
-			}
-		});
+		}
+		return tabInfoMap;
 
-		return completeData;
 	}
 	catch (error) {
-		console.log('Failed to fetch tab dates:', error);
-		await flashBadge({ success: false });
-		return fallbackData;
+		console.log('Failed to fetch tab dates. Heliotropium might not be installed.', error);
+		return tabInfoMap;
 	}
 }
 
 /**
- * Sorts tabs by their date metadata, moving undated tabs to the front.
- * @param {ChromeTab[]} tabs
- * @param {Array} tabDataArray - Array of objects with tabId and date
- * @returns {ChromeTab[]} Sorted array of tabs
+ * Creates a comparable Date object from a ParsedDate object
+ * Returns null if the date is invalid or incomplete
+ * @param {ParsedDate | null} dateObj
+ * @returns {Date | null}
  */
-function sortTabsByDate(tabs, tabDataArray) {
+function getComparableDate(dateObj) {
+	// Only a year is strictly required. Month and day can default to 1.
+	if (!dateObj || dateObj.year == null) {
+		return null;
+	}
+	// Month is 0-indexed, so we default to month 1 (January) and day 1.
+	return new Date(Date.UTC(dateObj.year, (dateObj.month || 1) - 1, dateObj.day || 1));
+}
+
+/**
+ * Sorts tabs by their associated date metadata, placing undated tabs first.
+ * @param {ChromeTab[]} tabs
+ * @param {Map<number, Object>} tabDataMap - Map from tabId to date info
+ * @returns {ChromeTab[]} Sorted array of tabs (does not mutate original)
+ */
+function sortTabsByDate(tabs, tabDataMap) {
 	console.log('Sorting tabs by date...');
-	console.log('Tab data:', tabDataArray);
-	console.log('Current tab ids:', tabs.map(tab => tab.id));
+	console.log('Tab data map:', tabDataMap);
+	console.log('Current tab ids:', tabs.map((tab) => tab.id));
 
-	const dateMap = {};
-	tabDataArray.forEach(({ tabId, date }) => {
-		const { year = '', month = '', day = '' } = date || {};
-		dateMap[tabId] = `${year}-${month}-${day}`;
-	});
-	console.log('Date map:', dateMap);
+	const sorted = tabs.toSorted((a, b) => {
+		const dateA = getComparableDate(tabDataMap.get(a.id)?.date);
+		const dateB = getComparableDate(tabDataMap.get(b.id)?.date);
 
-	const sortedTabs = tabs.toSorted((a, b) => {
-		const dateA = dateMap[a.id] || '';
-		const dateB = dateMap[b.id] || '';
-		return dateA.localeCompare(dateB);
+		// undated come first
+		if (!dateA && !dateB) return 0;
+		if (!dateA) return -1;
+		if (!dateB) return 1;
+		return dateA - dateB;
 	});
 
-	// move tabs without dates to the start of the array
-	const undatedTabs = sortedTabs.filter(tab => !dateMap[tab.id]);
-	const datedTabs = sortedTabs.filter(tab => dateMap[tab.id]);
-	sortedTabs.length = 0;
-	sortedTabs.push(...undatedTabs, ...datedTabs);
+	// maintain original semantics of moving undated to front explicitly
+	const undatedTabs = sorted.filter((tab) => !getComparableDate(tabDataMap.get(tab.id)?.date));
+	const datedTabs = sorted.filter((tab) => getComparableDate(tabDataMap.get(tab.id)?.date));
+	const sortedTabs = [...undatedTabs, ...datedTabs];
 
-	console.log('Sorted tab ids:', sortedTabs.map(tab => tab.id));
-
+	console.log('Sorted tab ids:', sortedTabs.map((tab) => tab.id));
 	return sortedTabs;
 }
 
 /**
  * Groups tabs into a mapping from date key to array of tab IDs.
- * Tabs without dates are grouped under 'undated'.
+ * Tabs without valid dates are grouped under 'undated'.
  * @param {ChromeTab[]} tabs
- * @param {Array} tabDataArray
- * @returns {Object<string, number[]>} tabGroups
+ * @param {Map<number, Object>} tabDataMap
+ * @returns {Object<string, number[]>}
  */
-function makeDateTabGroups(tabs, tabDataArray) {
+function makeDateTabGroups(tabs, tabDataMap) {
 	const tabGroups = {};
 	tabs.forEach((tab) => {
-		const tabData = tabDataArray.find((data) => data.tabId === tab.id);
+		const tabData = tabDataMap.get(tab.id);
 		const { date } = tabData || {};
 		const dateKey = date ? `${date.year}-${date.month}-${date.day}` : 'undated';
 		if (!tabGroups[dateKey]) {
@@ -286,19 +268,21 @@ async function groupSelectedTabsByDate() {
 		tabs.forEach((tab) => console.log(tab.id, tab.url));
 		console.groupEnd();
 
-		// 1. fetch dates for selected tabs, gets an array of objects with tabId and date
-		const tabDataArray = await fetchTabDates(tabs);
-		if (!tabDataArray || tabDataArray.length === 0) {
+		// 1. fetch dates for selected tabs, gets a map of tabId -> data
+		const tabDataMap = await fetchTabDates(tabs);
+		if (!tabDataMap || tabDataMap.size === 0) {
 			console.log('No tab data found.');
 			await flashBadge({ success: false });
 			return;
 		}
 		console.group('Tab data:');
-		tabDataArray.forEach((tabData) => console.log(tabData.tabId, tabData.date));
+		for (const [tabId, tabData] of tabDataMap.entries()) {
+			console.log(tabId, tabData.date);
+		}
 		console.groupEnd();
 
 		// 2. sort the array of tabs by date. move tabs with undated dates to the start of the array
-		const sortedTabs = sortTabsByDate(tabs, tabDataArray);
+		const sortedTabs = sortTabsByDate(tabs, tabDataMap);
 		if (!sortedTabs || sortedTabs.length === 0) {
 			console.log('No sorted tabs found.');
 			await flashBadge({ success: false });
@@ -309,7 +293,7 @@ async function groupSelectedTabsByDate() {
 		console.groupEnd();
 
 		// 3. make tabGroups object
-		const tabGroups = makeDateTabGroups(sortedTabs, tabDataArray);
+		const tabGroups = makeDateTabGroups(sortedTabs, tabDataMap);
 		console.group('Tab groups:');
 		console.log(tabGroups);
 		Object.entries(tabGroups).forEach(([date, tabIds]) => {
@@ -317,7 +301,8 @@ async function groupSelectedTabsByDate() {
 		});
 		console.groupEnd();
 
-		// 4. group the tabs by date, using the array from step 3. if tabGroups.update() is supported, use the date (or 'undated') as the name of the group
+		// 4. group the tabs by date, using the array from step 3.
+		// if `tabGroups.update()` is supported, use the date (or 'undated') as the name of the group
 		const groupPromises = Object.entries(tabGroups).map(async ([date, tabIds]) => {
 			try {
 				console.log('Grouping tabs on date:', date);
