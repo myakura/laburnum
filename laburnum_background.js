@@ -1,5 +1,17 @@
+/**
+ * @file background script for grouping selected tabs
+ * @author Masataka Yakura
+ */
+
+/// <reference path="./types.js" />
+
+/**
+ * Displays a temporary badge on the extension icon to indicate success or failure
+ * @param {Object} options
+ * @param {boolean} [options.success=true] - Whether the operation was successful
+ * @see credit: {@link https://github.com/chitsaou/copy-as-markdown}
+ */
 async function flashBadge({ success = true }) {
-	// credit: https://github.com/chitsaou/copy-as-markdown
 	const text = success ? '✔' : '✘';
 	const color = success ? 'hsl(135, 70%, 30%)' : 'hsl(0, 80%, 40%)';
 	const transparent = 'rgba(0, 0, 0, 0)';
@@ -19,6 +31,9 @@ async function flashBadge({ success = true }) {
 	}
 }
 
+/**
+ * Sets a working indicator badge showing "..." to indicate an operation in progress
+ */
 async function setWorkingBadge() {
 	try {
 		await chrome.action.setBadgeText({ text: '...' });
@@ -29,6 +44,10 @@ async function setWorkingBadge() {
 	}
 }
 
+/**
+ * Gets all currently selected/highlighted tabs in the current window
+ * @returns {Promise<ChromeTab[]>} Array of selected tabs
+ */
 async function getSelectedTabs() {
 	try {
 		const tabs = await chrome.tabs.query({ currentWindow: true, highlighted: true });
@@ -37,7 +56,8 @@ async function getSelectedTabs() {
 		tabs.forEach((tab) => console.log(tab.id, tab.url, tab.title));
 		console.groupEnd();
 
-		return tabs;
+		// It's crucial to sort by index to have a predictable starting point
+		return tabs.toSorted((a, b) => a.index - b.index);
 	}
 	catch (error) {
 		console.error('Failed to get selected tabs:', error);
@@ -45,6 +65,9 @@ async function getSelectedTabs() {
 	}
 }
 
+/**
+ * Groups the currently selected tabs
+ */
 async function groupSelectedTabs() {
 	try {
 		const tabs = await getSelectedTabs();
@@ -301,11 +324,17 @@ async function groupSelectedTabsByDate() {
 	}
 }
 
+/**
+ * Event listener for extension icon click
+ */
 chrome.action.onClicked.addListener(async () => {
 	// fixme: use `groupSelectedTabsByUrl()` by default. change to `groupSelectedTabsByDate()` if heliotropium is installed
 	await groupSelectedTabsByDate();
 });
 
+/**
+ * Event listener for keyboard commands
+ */
 chrome.commands.onCommand.addListener(async (command) => {
 	if (command === 'group-tabs') {
 		await groupSelectedTabs();
@@ -315,13 +344,22 @@ chrome.commands.onCommand.addListener(async (command) => {
 	}
 });
 
+/**
+ * Detects if the system is in dark mode
+ * @returns {boolean} True if dark mode is enabled, false otherwise
+ */
 function isDarkMode() {
-	if (typeof window === 'undefined' || !('matchMedia' in window)) {
-		return false;
+	// Note: this works only on non-service-worker contexts since its dependance on `window.matchMedia`. This is intentional as there's not really cross-browser way to detect light/dark mode for icon updates.
+	if (typeof window !== 'undefined' && 'matchMedia' in window) {
+		return window.matchMedia('(prefers-color-scheme: dark)').matches;
 	}
-	return window.matchMedia('(prefers-color-scheme: dark)').matches;
+	return false;
 }
 
+/**
+ * Updates the extension icon based on dark mode and enables/disables the extension based on the number of selected tabs
+ * @todo switch to use `icon_variants` once it's widely supported
+ */
 async function updateIcon() {
 	const icon = isDarkMode() ? 'icons/icon_white.png' : 'icons/icon_black.png';
 	try {
@@ -340,6 +378,8 @@ async function updateIcon() {
 	}
 }
 
+// Icon updates
+
 chrome.windows.onFocusChanged.addListener(async () => {
 	await updateIcon();
 });
@@ -354,8 +394,11 @@ chrome.tabs.onHighlighted.addListener(async ({ tabIds }) => {
 	await updateIcon();
 });
 
-// top-level await is not supported in service workers
+/**
+ * Initializes the extension
+ */
 function initialize() {
+	// Note: top-level await is not supported in service workers so this has to be a promise chain
 	updateIcon().catch((error) => {
 		console.log('Error on initialization:', error);
 	});
