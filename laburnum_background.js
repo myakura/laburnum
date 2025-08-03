@@ -94,6 +94,12 @@ async function groupSelectedTabs() {
 	}
 }
 
+/**
+ * Fetches date information for tabs via the Heliotropium extension.
+ * It reloads unread/unfinished tabs with a timeout, then sends a message to the extension to get parsed dates.
+ * @param {ChromeTab[]} tabs
+ * @returns {Promise<Array>} Array of objects containing tabId and date info (fallbacks provided on failure)
+ */
 async function fetchTabDates(tabs) {
 	const unloadedTabs = tabs.filter(tab => tab.discarded || tab.status !== 'complete');
 
@@ -207,6 +213,12 @@ async function fetchTabDates(tabs) {
 	}
 }
 
+/**
+ * Sorts tabs by their date metadata, moving undated tabs to the front.
+ * @param {ChromeTab[]} tabs
+ * @param {Array} tabDataArray - Array of objects with tabId and date
+ * @returns {ChromeTab[]} Sorted array of tabs
+ */
 function sortTabsByDate(tabs, tabDataArray) {
 	console.log('Sorting tabs by date...');
 	console.log('Tab data:', tabDataArray);
@@ -236,7 +248,13 @@ function sortTabsByDate(tabs, tabDataArray) {
 	return sortedTabs;
 }
 
-// make a new array from tabs and the result from fetchTabdates, with each item being an object whose key is the date and the value is an array of tab ids. undated tabs should be grouped together, perhaps with a key of 'undated'
+/**
+ * Groups tabs into a mapping from date key to array of tab IDs.
+ * Tabs without dates are grouped under 'undated'.
+ * @param {ChromeTab[]} tabs
+ * @param {Array} tabDataArray
+ * @returns {Object<string, number[]>} tabGroups
+ */
 function makeDateTabGroups(tabs, tabDataArray) {
 	const tabGroups = {};
 	tabs.forEach((tab) => {
@@ -251,6 +269,9 @@ function makeDateTabGroups(tabs, tabDataArray) {
 	return tabGroups;
 }
 
+/**
+ * Groups selected tabs by their associated date, creating separate tab groups and naming them.
+ */
 async function groupSelectedTabsByDate() {
 	try {
 		await setWorkingBadge();
