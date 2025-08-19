@@ -200,35 +200,47 @@ function getComparableDate(dateObj) {
 }
 
 /**
- * Sorts tabs by their associated date metadata, placing undated tabs first.
+ * A robust, shared function to sort tabs by date.
  * @param {ChromeTab[]} tabs
- * @param {Map<number, Object>} tabDataMap - Map from tabId to date info
- * @returns {ChromeTab[]} Sorted array of tabs (does not mutate original)
+ * @param {Map<number, TabDateInfo>} tabDataMap - The map of tabIDs to date info.
+ * @param {'end' | 'start' | 'preserve'} undatedPlacement - How to handle tabs without a date.
+ * - 'start': Move all undated tabs to the beginning.
+ * - 'end': Move all undated tabs to the end.
+ * - 'preserve': Keep the original relative order of undated tabs.
+ * @returns {ChromeTab[]} A new, sorted array of tabs.
  */
-function sortTabsByDate(tabs, tabDataMap) {
+function sortTabsByDate(tabs, tabDataMap, undatedPlacement = 'end') {
 	console.log('Sorting tabs by date...');
 	console.log('Tab data map:', tabDataMap);
 	console.log('Current tab ids:', tabs.map((tab) => tab.id));
 
-	const sorted = tabs.toSorted((a, b) => {
+	const sortedTabs = tabs.toSorted((a, b) => {
 		const dateA = getComparableDate(tabDataMap.get(a.id)?.date);
 		const dateB = getComparableDate(tabDataMap.get(b.id)?.date);
 
-		// undated come first
-		if (!dateA && !dateB) return 0;
-		if (!dateA) return -1;
-		if (!dateB) return 1;
-		return dateA - dateB;
-	});
+		// Both have dates: sort chronologically
+		if (dateA && dateB) { return dateA - dateB; }
 
-	// maintain original semantics of moving undated to front explicitly
-	const undatedTabs = sorted.filter((tab) => !getComparableDate(tabDataMap.get(tab.id)?.date));
-	const datedTabs = sorted.filter((tab) => getComparableDate(tabDataMap.get(tab.id)?.date));
-	const sortedTabs = [...undatedTabs, ...datedTabs];
+		// Neither has a date: preserve original relative order
+		if (!dateA && !dateB) { return 0; }
+
+		// One is undated
+		if (!dateA) { return undatedPlacement === 'start' ? -1 : 1; }
+		if (!dateB) { return undatedPlacement === 'start' ? 1 : -1; }
+
+		// If we reach here, both are either dated or undated
+		if (undatedPlacement === 'preserve') {
+			if (dateA) return -1; // Only A has a date, A comes first
+			if (dateB) return 1;  // Only B has a date, B comes first
+		}
+
+		return 0;
+	});
 
 	console.log('Sorted tab ids:', sortedTabs.map((tab) => tab.id));
 	return sortedTabs;
 }
+
 
 /**
  * Groups tabs into a mapping from date key to array of tab IDs.
