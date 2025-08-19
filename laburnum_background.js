@@ -5,6 +5,10 @@
 
 /// <reference path="./types.js" />
 
+
+// Shared utility functions for updating UI
+
+
 /**
  * Displays a temporary badge on the extension icon to indicate success or failure
  * @param {Object} options
@@ -31,6 +35,7 @@ async function flashBadge({ success = true }) {
 	}
 }
 
+
 /**
  * Sets a working indicator badge showing "..." to indicate an operation in progress
  */
@@ -43,6 +48,10 @@ async function setWorkingBadge() {
 		console.error('Failed to set working badge:', error);
 	}
 }
+
+
+// Utility functions
+
 
 /**
  * Gets all currently selected/highlighted tabs in the current window
@@ -64,6 +73,9 @@ async function getSelectedTabs() {
 		return [];
 	}
 }
+
+
+// Function to communicate with Heliotropium extension
 
 
 /**
@@ -156,6 +168,10 @@ async function fetchTabDates(tabs) {
 	}
 }
 
+
+// Utility functions for date parsing and sorting
+
+
 /**
  * Creates a comparable Date object from a ParsedDate object
  * Returns null if the date is invalid or incomplete
@@ -170,6 +186,7 @@ function getComparableDate(dateObj) {
 	// Month is 0-indexed, so we default to month 1 (January) and day 1.
 	return new Date(Date.UTC(dateObj.year, (dateObj.month || 1) - 1, dateObj.day || 1));
 }
+
 
 /**
  * A robust, shared function to sort tabs by date.
@@ -226,6 +243,7 @@ function isDarkMode() {
 	return false;
 }
 
+
 /**
  * Updates the extension icon based on dark mode and enables/disables the extension based on the number of selected tabs
  * @todo switch to use `icon_variants` once it's widely supported
@@ -271,6 +289,11 @@ function initialize() {
 		await updateIcon();
 	});
 }
+
+
+// Tab grouping functions
+
+
 /**
  * Groups tabs into a mapping from date key to array of tab IDs.
  * Tabs without valid dates are grouped under `'undated'`.
@@ -300,6 +323,7 @@ function makeDateTabGroups(tabs, tabDataMap) {
 	return tabGroups;
 }
 
+
 /**
  * Groups the currently selected tabs
  */
@@ -328,6 +352,7 @@ async function groupSelectedTabs() {
 		await flashBadge({ success: false });
 	}
 }
+
 
 /**
  * Groups the currently selected tabs by date
@@ -362,6 +387,7 @@ async function groupTabsByDate() {
 	}
 }
 
+
 /**
  * Event listener for extension icon click
  */
@@ -369,6 +395,7 @@ chrome.action.onClicked.addListener(async () => {
 	// fixme: use `groupSelectedTabsByUrl()` by default. change to `groupSelectedTabsByDate()` if heliotropium is installed
 	await groupSelectedTabsByDate();
 });
+
 
 /**
  * Event listener for keyboard commands
