@@ -65,34 +65,6 @@ async function getSelectedTabs() {
 	}
 }
 
-/**
- * Groups the currently selected tabs
- */
-async function groupSelectedTabs() {
-	try {
-		const tabs = await getSelectedTabs();
-		if (!tabs || tabs.length === 0) {
-			console.log('No tabs found.');
-			await flashBadge({ success: false });
-			return;
-		}
-
-		console.group('Grouping tabs...');
-		tabs.forEach((tab) => console.log(tab.url));
-		console.groupEnd();
-
-		const groupId = await chrome.tabs.group({
-			tabIds: tabs.map((tab) => tab.id),
-		});
-
-		console.log('Grouped!');
-		await flashBadge({ success: true });
-	}
-	catch (error) {
-		console.log(error);
-		await flashBadge({ success: false });
-	}
-}
 
 /**
  * Fetches date information for tabs using Heliotropium extension
@@ -239,6 +211,36 @@ function sortTabsByDate(tabs, tabDataMap, undatedPlacement = 'end') {
 
 	console.log('Sorted tab ids:', sortedTabs.map((tab) => tab.id));
 	return sortedTabs;
+}
+
+
+/**
+ * Groups the currently selected tabs
+ */
+async function groupSelectedTabs() {
+	try {
+		const tabs = await getSelectedTabs();
+		if (!tabs || tabs.length === 0) {
+			console.log('No tabs found.');
+			await flashBadge({ success: false });
+			return;
+		}
+
+		console.group('Grouping tabs...');
+		tabs.forEach((tab) => console.log(tab.url));
+		console.groupEnd();
+
+		const groupId = await chrome.tabs.group({
+			tabIds: tabs.map((tab) => tab.id),
+		});
+
+		console.log('Grouped!');
+		await flashBadge({ success: true });
+	}
+	catch (error) {
+		console.log(error);
+		await flashBadge({ success: false });
+	}
 }
 
 
