@@ -384,29 +384,27 @@ async function updateIcon() {
 	}
 }
 
-// Icon updates
-
-chrome.windows.onFocusChanged.addListener(async () => {
-	await updateIcon();
-});
-
-chrome.tabs.onActivated.addListener(async ({ tabId }) => {
-	console.log('Tab activated:', tabId);
-	await updateIcon();
-});
-
-chrome.tabs.onHighlighted.addListener(async ({ tabIds }) => {
-	console.log('Tab highlighted:', tabIds);
-	await updateIcon();
-});
 
 /**
  * Initializes the extension
  */
 function initialize() {
-	// Note: top-level await is not supported in service workers so this has to be a promise chain
+	// Note: top-level await is not supported in service workers so this function cannot be an async function, thus being a promise chain
 	updateIcon().catch((error) => {
 		console.log('Error on initialization:', error);
+	});
+
+	// Icon updates
+	chrome.windows.onFocusChanged.addListener(async () => {
+		await updateIcon();
+	});
+	chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+		console.log('Tab activated:', tabId);
+		await updateIcon();
+	});
+	chrome.tabs.onHighlighted.addListener(async ({ tabIds }) => {
+		console.log('Tab highlighted:', tabIds);
+		await updateIcon();
 	});
 }
 
