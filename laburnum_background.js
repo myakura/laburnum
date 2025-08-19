@@ -215,156 +215,6 @@ function sortTabsByDate(tabs, tabDataMap, undatedPlacement = 'end') {
 
 
 /**
- * Groups the currently selected tabs
- */
-async function groupSelectedTabs() {
-	try {
-		const tabs = await getSelectedTabs();
-		if (!tabs || tabs.length === 0) {
-			console.log('No tabs found.');
-			await flashBadge({ success: false });
-			return;
-		}
-
-		console.group('Grouping tabs...');
-		tabs.forEach((tab) => console.log(tab.url));
-		console.groupEnd();
-
-		const groupId = await chrome.tabs.group({
-			tabIds: tabs.map((tab) => tab.id),
-		});
-
-		console.log('Grouped!');
-		await flashBadge({ success: true });
-	}
-	catch (error) {
-		console.log(error);
-		await flashBadge({ success: false });
-	}
-}
-
-
-/**
- * Groups tabs into a mapping from date key to array of tab IDs.
- * Tabs without valid dates are grouped under 'undated'.
- * @param {ChromeTab[]} tabs
- * @param {Map<number, Object>} tabDataMap
- * @returns {Object<string, number[]>}
- */
-function makeDateTabGroups(tabs, tabDataMap) {
-	const tabGroups = {};
-	tabs.forEach((tab) => {
-		const tabData = tabDataMap.get(tab.id);
-		const { date } = tabData || {};
-		const dateKey = date ? `${date.year}-${date.month}-${date.day}` : 'undated';
-		if (!tabGroups[dateKey]) {
-			tabGroups[dateKey] = [];
-		}
-		tabGroups[dateKey].push(tab.id);
-	});
-	return tabGroups;
-}
-
-/**
- * Groups selected tabs by their associated date, creating separate tab groups and naming them.
- */
-async function groupSelectedTabsByDate() {
-	try {
-		await setWorkingBadge();
-
-		const tabs = await getSelectedTabs();
-		if (!tabs || tabs.length === 0) {
-			console.log('No tabs found.');
-			await flashBadge({ success: false });
-			return;
-		}
-		console.group('Grouping tabs by date...');
-		tabs.forEach((tab) => console.log(tab.id, tab.url));
-		console.groupEnd();
-
-		// 1. fetch dates for selected tabs, gets a map of tabId -> data
-		const tabDataMap = await fetchTabDates(tabs);
-		if (!tabDataMap || tabDataMap.size === 0) {
-			console.log('No tab data found.');
-			await flashBadge({ success: false });
-			return;
-		}
-		console.group('Tab data:');
-		for (const [tabId, tabData] of tabDataMap.entries()) {
-			console.log(tabId, tabData.date);
-		}
-		console.groupEnd();
-
-		// 2. sort the array of tabs by date. move tabs with undated dates to the start of the array
-		const sortedTabs = sortTabsByDate(tabs, tabDataMap);
-		if (!sortedTabs || sortedTabs.length === 0) {
-			console.log('No sorted tabs found.');
-			await flashBadge({ success: false });
-			return;
-		}
-		console.group('Sorted tabs:');
-		sortedTabs.forEach((tab) => console.log(tab.id, tab.url));
-		console.groupEnd();
-
-		// 3. make tabGroups object
-		const tabGroups = makeDateTabGroups(sortedTabs, tabDataMap);
-		console.group('Tab groups:');
-		console.log(tabGroups);
-		Object.entries(tabGroups).forEach(([date, tabIds]) => {
-			console.log(date, tabIds);
-		});
-		console.groupEnd();
-
-		// 4. group the tabs by date, using the array from step 3.
-		// if `tabGroups.update()` is supported, use the date (or 'undated') as the name of the group
-		const groupPromises = Object.entries(tabGroups).map(async ([date, tabIds]) => {
-			try {
-				console.log('Grouping tabs on date:', date);
-				const groupId = await chrome.tabs.group({ tabIds });
-				const tabGroup = await chrome.tabGroups.get(groupId);
-				console.log('Created group:', tabGroup);
-
-				if (date !== 'undated') {
-					await chrome.tabGroups.update(groupId, { title: date });
-				}
-				console.log('Grouped tabs by date:', date, tabIds);
-			}
-			catch (error) {
-				console.log('Error grouping tabs:', error);
-			}
-		});
-		await Promise.all(groupPromises);
-
-		console.log('Grouped all tabs by date!');
-		await flashBadge({ success: true });
-	}
-	catch (error) {
-		console.log('Error grouping tabs by date:', error);
-		await flashBadge({ success: false });
-	}
-}
-
-/**
- * Event listener for extension icon click
- */
-chrome.action.onClicked.addListener(async () => {
-	// fixme: use `groupSelectedTabsByUrl()` by default. change to `groupSelectedTabsByDate()` if heliotropium is installed
-	await groupSelectedTabsByDate();
-});
-
-/**
- * Event listener for keyboard commands
- */
-chrome.commands.onCommand.addListener(async (command) => {
-	if (command === 'group-tabs') {
-		await groupSelectedTabs();
-	}
-	if (command === 'group-tabs-by-date') {
-		await groupSelectedTabsByDate();
-	}
-});
-
-/**
  * Detects if the system is in dark mode
  * @returns {boolean} True if dark mode is enabled, false otherwise
  */
@@ -421,5 +271,118 @@ function initialize() {
 		await updateIcon();
 	});
 }
+/**
+ * Groups tabs into a mapping from date key to array of tab IDs.
+ * Tabs without valid dates are grouped under `'undated'`.
+ * @param {ChromeTab[]} tabs
+ * @param {Map<number, Object>} tabDataMap
+ * @returns {Object<string, number[]>}
+ */
+function makeDateTabGroups(tabs, tabDataMap) {
+	const tabGroups = { 'undated': [] };
+	tabs.forEach((tab) => {
+		const date = tabDataMap.get(tab.id)?.date;
+
+		if (date && date.year) {
+			const dateKey = `${date.year}-${date.month || 1}-${date.day || 1}`;
+			if (!tabGroups[dateKey]) {
+				tabGroups[dateKey] = [];
+			}
+			tabGroups[dateKey].push(tab.id);
+		}
+		else {
+			tabGroups['undated'].push(tab.id);
+		}
+	});
+	if (tabGroups['undated'].length === 0) {
+		delete tabGroups['undated'];
+	}
+	return tabGroups;
+}
+
+/**
+ * Groups the currently selected tabs
+ */
+async function groupSelectedTabs() {
+	try {
+		const tabs = await getSelectedTabs();
+		if (!tabs || tabs.length === 0) {
+			console.log('No tabs found.');
+			await flashBadge({ success: false });
+			return;
+		}
+
+		console.group('Grouping tabs...');
+		tabs.forEach((tab) => console.log(tab.url));
+		console.groupEnd();
+
+		const groupId = await chrome.tabs.group({
+			tabIds: tabs.map((tab) => tab.id),
+		});
+
+		console.log('Grouped!');
+		await flashBadge({ success: true });
+	}
+	catch (error) {
+		console.log(error);
+		await flashBadge({ success: false });
+	}
+}
+
+/**
+ * Groups the currently selected tabs by date
+ */
+async function groupTabsByDate() {
+	await setWorkingBadge();
+	const tabs = await getSelectedTabs();
+	if (tabs.length < 2) {
+		await flashBadge({ success: true });
+		return;
+	}
+
+	try {
+		const tabDataMap = await fetchTabDates(tabs);
+		const sortedTabs = sortTabsByDate(tabs, tabDataMap, 'start');
+		const tabGroups = makeDateTabGroups(sortedTabs, tabDataMap);
+
+		const groupPromises = Object.entries(tabGroups).map(async ([dateKey, tabIds]) => {
+			if (tabIds.length === 0) return;
+			const groupId = await chrome.tabs.group({ tabIds });
+			if (dateKey !== 'undated') {
+				await chrome.tabGroups.update(groupId, { title: dateKey });
+			}
+		});
+
+		await Promise.all(groupPromises);
+		await flashBadge({ success: true });
+	}
+	catch (error) {
+		console.error('Error grouping tabs by date:', error);
+		await flashBadge({ success: false });
+	}
+}
+
+/**
+ * Event listener for extension icon click
+ */
+chrome.action.onClicked.addListener(async () => {
+	// fixme: use `groupSelectedTabsByUrl()` by default. change to `groupSelectedTabsByDate()` if heliotropium is installed
+	await groupSelectedTabsByDate();
+});
+
+/**
+ * Event listener for keyboard commands
+ */
+chrome.commands.onCommand.addListener(async (command) => {
+	if (command === 'group-tabs') {
+		await groupSelectedTabs();
+	}
+	if (command === 'group-tabs-by-date') {
+		await groupSelectedTabsByDate();
+	}
+});
+
+
+// Initialize the extension
 
 initialize();
