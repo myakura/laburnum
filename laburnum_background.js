@@ -357,7 +357,7 @@ async function groupSelectedTabs() {
 /**
  * Groups the currently selected tabs by date
  */
-async function groupTabsByDate() {
+async function groupSelectedTabsByDate() {
 	await setWorkingBadge();
 	const tabs = await getSelectedTabs();
 	if (tabs.length < 2) {
