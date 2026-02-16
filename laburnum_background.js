@@ -1,13 +1,87 @@
+'use strict';
+
 /**
  * @file background script for grouping selected tabs
  * @author Masataka Yakura
  */
 
-/// <reference path="./types.js" />
+/** @import {ChromeTab, ParsedDate, TabDateInfo} from "./types.js" */
 
 
-// Shared utility functions for updating UI
+// ============================================================================
+// Utilities: Tab selection and data structures
+// ============================================================================
 
+/**
+ * Gets all currently selected/highlighted tabs in the current window
+ * @returns {Promise<ChromeTab[]>} Array of selected tabs
+ */
+async function getSelectedTabs() {
+	try {
+		const tabs = await chrome.tabs.query({ currentWindow: true, highlighted: true });
+
+		console.group('Tabs obtained.');
+		tabs.forEach((tab) => console.log(tab.id, tab.url, tab.title));
+		console.groupEnd();
+
+		// It's crucial to sort by index to have a predictable starting point
+		return tabs.toSorted((a, b) => a.index - b.index);
+	}
+	catch (error) {
+		console.error('Failed to get selected tabs:', error);
+		return [];
+	}
+}
+
+/**
+ * Creates initial tab data map with default values for grouping operations
+ * Note: This creates a temporary Map for grouping, not a persistent cache
+ * @param {ChromeTab[]} tabs - Array of tabs
+ * @returns {Map<number, TabDateInfo>} Map of tab IDs to initial tab info
+ */
+function createEmptyTabDataMap(tabs) {
+	return new Map(tabs.map((tab) => [tab.id, {
+		tabId: tab.id,
+		url: tab.url,
+		title: tab.title,
+		dateString: null,
+		date: null,
+		groupId: null,
+		groupDate: null
+	}]));
+}
+
+
+// ============================================================================
+// View: Action button UI
+// ============================================================================
+
+/**
+ * Gets the appropriate icon path based on dark mode.
+ * @returns {string}
+ */
+function getIconPath() {
+	// Note: this works only on non-service-worker contexts since its dependance on `window.matchMedia`. This is intentional as there's not really cross-browser way to detect light/dark mode for icon updates.
+	if (typeof window !== 'undefined' && 'matchMedia' in window) {
+		return window.matchMedia('(prefers-color-scheme: dark)').matches
+			? 'icons/icon_white.png'
+			: 'icons/icon_black.png';
+	}
+	return 'icons/icon_gray.png';
+}
+
+/**
+ * Sets a working indicator badge showing "..." to indicate an operation in progress
+ */
+async function setWorkingBadge() {
+	try {
+		await chrome.action.setBadgeText({ text: '...' });
+		await chrome.action.setBadgeBackgroundColor({ color: 'hsl(225, 100%, 60%)' });
+	}
+	catch (error) {
+		console.error('Failed to set working badge:', error);
+	}
+}
 
 /**
  * Displays a temporary badge on the extension icon to indicate success or failure
@@ -35,40 +109,12 @@ async function flashBadge({ success = true }) {
 	}
 }
 
-
-/**
- * Sets a working indicator badge showing "..." to indicate an operation in progress
- */
-async function setWorkingBadge() {
-	try {
-		await chrome.action.setBadgeText({ text: '...' });
-		await chrome.action.setBadgeBackgroundColor({ color: 'hsl(225, 100%, 60%)' });
-	}
-	catch (error) {
-		console.error('Failed to set working badge:', error);
-	}
-}
-
-
-/**
- * Detects if the system is in dark mode
- * @returns {boolean} true if dark mode is enabled, false otherwise
- */
-function isDarkMode() {
-	// Note: this works only on non-service-worker contexts since its dependance on `window.matchMedia`. This is intentional as there's not really cross-browser way to detect light/dark mode for icon updates.
-	if (typeof window !== 'undefined' && 'matchMedia' in window) {
-		return window.matchMedia('(prefers-color-scheme: dark)').matches;
-	}
-	return false;
-}
-
-
 /**
  * Updates the extension icon based on dark mode and enables/disables the extension based on the number of selected tabs
  * @todo switch to use `icon_variants` once it's widely supported
  */
 async function updateIcon() {
-	const icon = isDarkMode() ? 'icons/icon_white.png' : 'icons/icon_black.png';
+	const icon = getIconPath();
 	try {
 		await chrome.action.setIcon({ path: icon });
 
@@ -86,51 +132,45 @@ async function updateIcon() {
 }
 
 
-// Utility functions
-
+// ============================================================================
+// Date parsing utilities
+// ============================================================================
 
 /**
- * Gets all currently selected/highlighted tabs in the current window
- * @returns {Promise<ChromeTab[]>} Array of selected tabs
+ * Extracts date from a string (expects YYYY-MM-DD format)
+ * @param {string} text - Input string to parse
+ * @returns {ParsedDate | null} Parsed date object or null if no valid date found
  */
-async function getSelectedTabs() {
-	try {
-		const tabs = await chrome.tabs.query({ currentWindow: true, highlighted: true });
+function extractDate(text) {
+	if (!text) return null;
 
-		console.group('Tabs obtained.');
-		tabs.forEach((tab) => console.log(tab.id, tab.url, tab.title));
-		console.groupEnd();
+	const match = text.match(/(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/);
+	if (match) {
+		const { year, month, day } = match.groups;
+		return { year, month, day };
+	}
+	return null;
+}
 
-		// It's crucial to sort by index to have a predictable starting point
-		return tabs.toSorted((a, b) => a.index - b.index);
+/**
+ * Creates a comparable Date object from a ParsedDate object
+ * Returns null if the date is invalid or incomplete
+ * @param {ParsedDate | null} dateObj
+ * @returns {Date | null}
+ */
+function getComparableDate(dateObj) {
+	// Only a year is strictly required. Month and day can default to 1.
+	if (!dateObj || dateObj.year == null) {
+		return null;
 	}
-	catch (error) {
-		console.error('Failed to get selected tabs:', error);
-		return [];
-	}
+	// Month is 0-indexed, so we default to month 1 (January) and day 1.
+	return new Date(Date.UTC(dateObj.year, (dateObj.month || 1) - 1, dateObj.day || 1));
 }
 
 
-// Function to get dates from tab groups or by communicating with Heliotropium extension
-
-
-/**
- * Creates initial tab info map with default values
- * @param {ChromeTab[]} tabs - Array of tabs
- * @returns {Map<number, TabDateInfo>} Map of tab IDs to initial tab info
- */
-function createTabInfoMap(tabs) {
-	return new Map(tabs.map((tab) => [tab.id, {
-		tabId: tab.id,
-		url: tab.url,
-		title: tab.title,
-		dateString: null,
-		date: null,
-		groupId: null,
-		groupDate: null
-	}]));
-}
-
+// ============================================================================
+// Tab group utilities
+// ============================================================================
 
 /**
  * Fetches tab group information and adds group dates to tab info map
@@ -164,6 +204,42 @@ async function fetchTabGroupDates(tabs, tabInfoMap) {
 	}
 }
 
+/**
+ * Groups tabs into a mapping from date key to array of tab IDs.
+ * Tabs without valid dates are grouped under `'undated'`.
+ * Uses group dates for grouped tabs, individual dates for ungrouped tabs.
+ * @param {ChromeTab[]} tabs
+ * @param {Map<number, TabDateInfo>} tabDataMap
+ * @returns {Object<string, number[]>}
+ */
+function makeDateTabGroups(tabs, tabDataMap) {
+	const tabGroups = { 'undated': [] };
+	tabs.forEach((tab) => {
+		const tabInfo = tabDataMap.get(tab.id);
+		// Use group date if tab is in a group, otherwise use individual tab date
+		const date = tabInfo?.groupDate || tabInfo?.date;
+
+		if (date && date.year) {
+			const dateKey = `${date.year}-${date.month || 1}-${date.day || 1}`;
+			if (!tabGroups[dateKey]) {
+				tabGroups[dateKey] = [];
+			}
+			tabGroups[dateKey].push(tab.id);
+		}
+		else {
+			tabGroups['undated'].push(tab.id);
+		}
+	});
+	if (tabGroups['undated'].length === 0) {
+		delete tabGroups['undated'];
+	}
+	return tabGroups;
+}
+
+
+// ============================================================================
+// Data fetching from Heliotropium extension
+// ============================================================================
 
 /**
  * Fetches individual tab dates from Heliotropium extension
@@ -210,55 +286,22 @@ async function fetchHeliotropiumDates(tabs, tabInfoMap) {
 	}
 }
 
-
 /**
  * Fetches date information for tabs using Heliotropium extension and tab group titles
  * @param {ChromeTab[]} tabs
  * @returns {Promise<Map<number, TabDateInfo>>} Map for tab dates including group information
  */
 async function fetchTabDates(tabs) {
-	const tabInfoMap = createTabInfoMap(tabs);
+	const tabInfoMap = createEmptyTabDataMap(tabs);
 	await fetchTabGroupDates(tabs, tabInfoMap);
 	await fetchHeliotropiumDates(tabs, tabInfoMap);
 	return tabInfoMap;
 }
 
 
-// Utility functions for date parsing and sorting
-
-
-/**
- * Extracts date from a string (expects YYYY-MM-DD format)
- * @param {string} text - Input string to parse
- * @returns {ParsedDate | null} Parsed date object or null if no valid date found
- */
-function extractDate(text) {
-	if (!text) return null;
-
-	const match = text.match(/(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/);
-	if (match) {
-		const { year, month, day } = match.groups;
-		return { year, month, day };
-	}
-	return null;
-}
-
-
-/**
- * Creates a comparable Date object from a ParsedDate object
- * Returns null if the date is invalid or incomplete
- * @param {ParsedDate | null} dateObj
- * @returns {Date | null}
- */
-function getComparableDate(dateObj) {
-	// Only a year is strictly required. Month and day can default to 1.
-	if (!dateObj || dateObj.year == null) {
-		return null;
-	}
-	// Month is 0-indexed, so we default to month 1 (January) and day 1.
-	return new Date(Date.UTC(dateObj.year, (dateObj.month || 1) - 1, dateObj.day || 1));
-}
-
+// ============================================================================
+// Tab grouping
+// ============================================================================
 
 /**
  * A robust, shared function to sort tabs by date, considering both individual tab dates and group dates.
@@ -322,67 +365,6 @@ function sortTabsByDate(tabs, tabDataMap, undatedPlacement = 'end') {
 	return sortedTabs;
 }
 
-
-/**
- * Initializes the extension
- */
-function initialize() {
-	// Note: top-level await is not supported in service workers so this function cannot be an async function, thus being a promise chain
-	updateIcon().catch((error) => {
-		console.log('Error on initialization:', error);
-	});
-
-	// Icon updates
-	chrome.windows.onFocusChanged.addListener(async () => {
-		await updateIcon();
-	});
-	chrome.tabs.onActivated.addListener(async ({ tabId }) => {
-		console.log('Tab activated:', tabId);
-		await updateIcon();
-	});
-	chrome.tabs.onHighlighted.addListener(async ({ tabIds }) => {
-		console.log('Tab highlighted:', tabIds);
-		await updateIcon();
-	});
-}
-
-
-// Tab grouping functions
-
-
-/**
- * Groups tabs into a mapping from date key to array of tab IDs.
- * Tabs without valid dates are grouped under `'undated'`.
- * Uses group dates for grouped tabs, individual dates for ungrouped tabs.
- * @param {ChromeTab[]} tabs
- * @param {Map<number, TabDateInfo>} tabDataMap
- * @returns {Object<string, number[]>}
- */
-function makeDateTabGroups(tabs, tabDataMap) {
-	const tabGroups = { 'undated': [] };
-	tabs.forEach((tab) => {
-		const tabInfo = tabDataMap.get(tab.id);
-		// Use group date if tab is in a group, otherwise use individual tab date
-		const date = tabInfo?.groupDate || tabInfo?.date;
-
-		if (date && date.year) {
-			const dateKey = `${date.year}-${date.month || 1}-${date.day || 1}`;
-			if (!tabGroups[dateKey]) {
-				tabGroups[dateKey] = [];
-			}
-			tabGroups[dateKey].push(tab.id);
-		}
-		else {
-			tabGroups['undated'].push(tab.id);
-		}
-	});
-	if (tabGroups['undated'].length === 0) {
-		delete tabGroups['undated'];
-	}
-	return tabGroups;
-}
-
-
 /**
  * Groups the currently selected tabs
  */
@@ -399,7 +381,7 @@ async function groupSelectedTabs() {
 		tabs.forEach((tab) => console.log(tab.url));
 		console.groupEnd();
 
-		const groupId = await chrome.tabs.group({
+		await chrome.tabs.group({
 			tabIds: tabs.map((tab) => tab.id),
 		});
 
@@ -411,7 +393,6 @@ async function groupSelectedTabs() {
 		await flashBadge({ success: false });
 	}
 }
-
 
 /**
  * Groups the currently selected tabs by date
@@ -447,18 +428,27 @@ async function groupSelectedTabsByDate() {
 }
 
 
+// ============================================================================
+// Controller: Main actions
+// ============================================================================
+
 /**
- * Event listener for extension icon click
+ * Main grouping action triggered by extension icon click
+ * Groups tabs by date if heliotropium is installed/configured, or if tabs have group dates
+ * @returns {Promise<void>}
  */
-chrome.action.onClicked.addListener(async () => {
-	// fixme: use `groupSelectedTabsByUrl()` by default. change to `groupSelectedTabsByDate()` if heliotropium is installed
+async function mainGroupAction() {
+	// fixme: use `groupSelectedTabs()` by default. change to `groupSelectedTabsByDate()` if heliotropium is installed
 	await groupSelectedTabsByDate();
-});
+}
 
 
-/**
- * Event listener for keyboard commands
- */
+// ============================================================================
+// Event listeners
+// ============================================================================
+
+chrome.action.onClicked.addListener(mainGroupAction);
+
 chrome.commands.onCommand.addListener(async (command) => {
 	if (command === 'group-tabs') {
 		await groupSelectedTabs();
@@ -468,7 +458,27 @@ chrome.commands.onCommand.addListener(async (command) => {
 	}
 });
 
+// Icon updates
+chrome.windows.onFocusChanged.addListener(async () => {
+	await updateIcon();
+});
 
-// Initialize the extension
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+	console.log('Tab activated:', tabId);
+	await updateIcon();
+});
 
-initialize();
+chrome.tabs.onHighlighted.addListener(async ({ tabIds }) => {
+	console.log('Tab highlighted:', tabIds);
+	await updateIcon();
+});
+
+
+// ============================================================================
+// Initialization
+// ============================================================================
+
+// Note: top-level await is not supported in service workers so this function cannot be an async function, thus being a promise chain
+updateIcon().catch((error) => {
+	console.log('Error on initialization:', error);
+});
