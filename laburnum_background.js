@@ -213,26 +213,22 @@ async function fetchTabGroupDates(tabs, tabInfoMap) {
  * @returns {Object<string, number[]>}
  */
 function makeDateTabGroups(tabs, tabDataMap) {
-	const tabGroups = { 'undated': [] };
+	const tabGroups = {};
 	tabs.forEach((tab) => {
 		const tabInfo = tabDataMap.get(tab.id);
 		// Use group date if tab is in a group, otherwise use individual tab date
 		const date = tabInfo?.groupDate || tabInfo?.date;
 
 		if (date && date.year) {
-			const dateKey = `${date.year}-${date.month || 1}-${date.day || 1}`;
+			const month = String(date.month || 1).padStart(2, '0');
+			const day = String(date.day || 1).padStart(2, '0');
+			const dateKey = `${date.year}-${month}-${day}`;
 			if (!tabGroups[dateKey]) {
 				tabGroups[dateKey] = [];
 			}
 			tabGroups[dateKey].push(tab.id);
 		}
-		else {
-			tabGroups['undated'].push(tab.id);
-		}
 	});
-	if (tabGroups['undated'].length === 0) {
-		delete tabGroups['undated'];
-	}
 	return tabGroups;
 }
 
@@ -413,9 +409,7 @@ async function groupSelectedTabsByDate() {
 		const groupPromises = Object.entries(tabGroups).map(async ([dateKey, tabIds]) => {
 			if (tabIds.length === 0) return;
 			const groupId = await chrome.tabs.group({ tabIds });
-			if (dateKey !== 'undated') {
-				await chrome.tabGroups.update(groupId, { title: dateKey });
-			}
+			await chrome.tabGroups.update(groupId, { title: dateKey });
 		});
 
 		await Promise.all(groupPromises);
